@@ -1,0 +1,17 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Database
+chroma_db/
+
+# Uploads
+Backend/uploads/
+
+# Environment variables
+.env
+
+# Mac
+.DS_Store
