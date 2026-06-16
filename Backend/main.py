@@ -1,11 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import auth, session
+from routers import auth, session, chat
 
-# FastAPI app banao
+# make FastAPI 
 app = FastAPI(title="RAG Chatbot API")
 
-# CORS setup karo
+# setup CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -14,9 +14,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Auth router connect karo
+# connect Auth router 
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(session.router, prefix="/sessions", tags=["Sessions"])
+app.include_router(chat.router, prefix="/chat", tags=["Chat"])
 
 
 # Home route
