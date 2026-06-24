@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
 export default function Signup() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleLogin = async () => {
-      if (!email || !password) {
+  const handleSignup = async () => {
+      if (!username || !email || !password) {
         alert("Please fill all fields!");
         return;
       }
@@ -18,14 +20,14 @@ export default function Signup() {
           "http://127.0.0.1:8000/auth/signup",
           { username, email, password }
         );
-        localStorage.setItem("token", response.data.access_token);
-        navigate("/chat");
-      } catch (error) {
-        alert("Login failed! Check email and password.");
-      } finally {
-        setLoading(false);
-      }
-    };
+        alert("Account created successfully! Please login.");
+      navigate("/");
+    } catch (error) {
+      alert("Signup failed! Email already exists.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div style={{
