@@ -1,12 +1,11 @@
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from routers.session import get_current_user
-from services.embedding_service import process_pdf, get_vectorstore
+from services.embedding_service import process_pdf, search_similar_chunks
 from schemas.chat_schema import ChatRequestSchema
 from database.db import chats_collection, sessions_collection
-from langchain_ollama import ChatOllama
-from langchain.chains import RetrievalQA
 from bson import ObjectId
 from datetime import datetime
+import requests
 import os
 import shutil
 
@@ -14,6 +13,8 @@ router = APIRouter()
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+OLLAMA_URL = "http://localhost:11434"
 
 
 # ===== PDF UPLOAD ROUTE =====
@@ -23,7 +24,7 @@ def upload_pdf(
     file: UploadFile = File(...),
     current_user: str = Depends(get_current_user)
 ):
-    # Check which user's session is this
+    # Check karo session is user ka hai
     session = sessions_collection.find_one({
         "_id": ObjectId(session_id),
         "user_id": current_user
@@ -31,12 +32,12 @@ def upload_pdf(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found!")
 
-    # save pdf in disk
+    # PDF ko disk pe save karo
     file_path = os.path.join(UPLOAD_DIR, f"{session_id}_{file.filename}")
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # process pdf — make chunks and save in Chromadb
+    # PDF process karo — chunks bana ke Qdrant mein save karo
     chunks_count = process_pdf(file_path, session_id)
 
     return {
@@ -51,7 +52,7 @@ def ask_question(
     request: ChatRequestSchema,
     current_user: str = Depends(get_current_user)
 ):
-    # Check which user's session is this
+    # Check karo session is user ka hai
     session = sessions_collection.find_one({
         "_id": ObjectId(request.session_id),
         "user_id": current_user
@@ -59,23 +60,33 @@ def ask_question(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found!")
 
-    # Vectorstore (retrive saved dat from Chromadb)
-    vectorstore = get_vectorstore(request.session_id)
+    # Step 1 — Qdrant se relevant chunks dhundho
+    relevant_chunks = search_similar_chunks(request.question, request.session_id)
 
-    # setup Ollama LLM
-    llm = ChatOllama(model="llama3.2")
+    # Step 2 — Chunks ko context mein jodo
+    context = "\n\n".join(relevant_chunks)
 
-    # make RAG chain
-    qa_chain = RetrievalQA.from_chain_type(
-        llm=llm,
-        retriever=vectorstore.as_retriever()
+    # Step 3 — Ollama ko prompt bhejo
+    prompt = f"""Use the following context to answer the question.
+    
+Context:
+{context}
+
+Question: {request.question}
+
+Answer:"""
+
+    response = requests.post(
+        f"{OLLAMA_URL}/api/generate",
+        json={
+            "model": "llama3.2",
+            "prompt": prompt,
+            "stream": False
+        }
     )
+    answer = response.json()["response"]
 
-    # answer of a question
-    result = qa_chain.invoke(request.question)
-    answer = result["result"]
-
-    # Save Chat History in Mongodb
+    # Step 4 — MongoDB mein save karo
     chats_collection.insert_one({
         "session_id": request.session_id,
         "user_id": current_user,
