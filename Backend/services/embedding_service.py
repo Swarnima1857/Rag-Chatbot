@@ -207,6 +207,8 @@ def process_pdf(pdf_path: str, session_id: str):
 
 
 
+
+
 # STEP 5 — SEARCH RELEVANT CHUNKS WITH DEBUG LOGGING
 
 def search_similar_chunks(question: str, session_id: str, top_k: int = 3):
@@ -256,3 +258,111 @@ def search_similar_chunks(question: str, session_id: str, top_k: int = 3):
 
     # Return only text content for chat.py
     return [c["text"] for c in chunks_with_scores]
+
+
+
+def load_company_documents(docs_folder: str = "company_docs"):
+    """
+    Loads all PDF documents from company_docs folder
+    and stores them in a single Qdrant collection.
+    This runs once when the server starts.
+    """
+    collection_name = "company_knowledge_base"
+    
+    if not os.path.exists(docs_folder):
+        print(f"[ERROR] Folder '{docs_folder}' not found!")
+        return 0
+    
+    pdf_files = [
+        f for f in os.listdir(docs_folder) 
+        if f.endswith('.pdf')
+    ]
+    
+    if not pdf_files:
+        print(f"[WARNING] No PDFs found in '{docs_folder}'!")
+        return 0
+    
+    print(f"\n[LOADING] Found {len(pdf_files)} PDFs to process...")
+    
+    client.recreate_collection(
+        collection_name=collection_name,
+        vectors_config=VectorParams(size=768, distance=Distance.COSINE)
+    )
+    
+    total_chunks = 0
+    all_points = []
+    
+    for pdf_file in pdf_files:
+        pdf_path = os.path.join(docs_folder, pdf_file)
+        print(f"\n[PROCESSING] {pdf_file}...")
+        
+        text = extract_text_from_pdf(pdf_path)
+        if not text.strip():
+            print(f"[SKIP] No text found in {pdf_file}")
+            continue
+        
+        chunks = semantic_chunking(text)
+        print(f"[CHUNKS] {len(chunks)} chunks created from {pdf_file}")
+        
+        for i, chunk in enumerate(chunks):
+            embedding = get_embedding(chunk)
+            all_points.append(
+                PointStruct(
+                    id=str(uuid.uuid4()),
+                    vector=embedding,
+                    payload={
+                        "text": chunk,
+                        "source": pdf_file,
+                        "chunk_index": i,
+                        "chunk_size": len(chunk)
+                    }
+                )
+            )
+        
+        total_chunks += len(chunks)
+    
+    if all_points:
+        client.upsert(
+            collection_name=collection_name,
+            points=all_points
+        )
+    
+    print(f"\n[DONE] {total_chunks} total chunks saved from {len(pdf_files)} PDFs!")
+    return total_chunks
+
+
+def search_company_docs(question: str, top_k: int = 3):
+    """
+    Search in company knowledge base — no session needed!
+    """
+    collection_name = "company_knowledge_base"
+    
+    question_embedding = get_embedding(question)
+    
+    results = client.query_points(
+        collection_name=collection_name,
+        query=question_embedding,
+        limit=top_k,
+        with_payload=True
+    )
+    
+    print(f"\n{'='*50}")
+    print(f"[QUERY]  : {question}")
+    print(f"[TOP {top_k} CHUNKS RETRIEVED]:")
+    
+    chunks_with_scores = []
+    for i, result in enumerate(results.points):
+        print(f"\n  Chunk {i+1}:")
+        print(f"  Source : {result.payload.get('source', 'Unknown')}")
+        print(f"  Score  : {result.score:.4f}")
+        print(f"  Text   : {result.payload['text'][:150]}...")
+        
+        chunks_with_scores.append({
+            "text": result.payload["text"],
+            "score": result.score,
+            "source": result.payload.get("source", "Unknown")
+        })
+    
+    print(f"{'='*50}\n")
+    
+    return chunks_with_scores
