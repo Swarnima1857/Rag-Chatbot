@@ -3,22 +3,140 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, VectorParams, Distance
 import pypdf
 import uuid
+import re
+import os
+from dotenv import load_dotenv
+
+# load .env file
+load_dotenv()
 
 # Qdrant Cloud connection details
-QDRANT_URL = "https://89d9406d-d4ca-4cc7-91d6-79a3d56079c4.sa-east-1-0.aws.cloud.qdrant.io"
-QDRANT_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIiwic3ViamVjdCI6ImFwaS1rZXk6Y2ExMGNhNjctZTU0Yi00ZjcyLWFlN2MtNTQzNTc5NzJkOWZlIn0.c3P_inmM4dQwKawLpqV7X004cSEMEfjZdB_zICvVjSs"  # Replace with new API key
-OLLAMA_URL = "http://localhost:11434"
+QDRANT_URL = os.getenv("QDRANT_URL")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+OLLAMA_URL = os.getenv("OLLAMA_URL")
 
-# Create Qdrant client — connects to Qdrant Cloud
+# Initialize Qdrant client
 client = QdrantClient(
     url=QDRANT_URL,
     api_key=QDRANT_API_KEY,
-    check_compatibility=False  # Skips version mismatch warning
+    check_compatibility=False
 )
 
 
-# Convert text to embedding using Ollama API
+# STEP 1 — EXTRACT TEXT FROM PDF
+
+def extract_text_from_pdf(pdf_path: str):
+    """
+    Extract all text content from a PDF file.
+    Cleans extra whitespace and joins pages with double newlines
+    to preserve paragraph structure.
+    """
+    reader = pypdf.PdfReader(pdf_path)
+    pages_text = []
+
+    for page_num, page in enumerate(reader.pages):
+        extracted = page.extract_text()
+        if extracted:
+            cleaned = extracted.strip()
+            pages_text.append(cleaned)
+
+    # Join all pages with double newline to preserve paragraph boundaries
+    full_text = "\n\n".join(pages_text)
+    return full_text
+
+
+# STEP 2 — SEMANTIC CHUNKING
+
+def semantic_chunking(
+    text: str,
+    max_chunk_size: int = 500,
+    min_chunk_size: int = 100,
+    overlap_sentences: int = 1
+):
+    """
+    Splits text into meaningful semantic chunks based on paragraph
+    and sentence boundaries — not just fixed character counts.
+
+    Strategy:
+    1. Split text into paragraphs using double newlines
+    2. If a paragraph is too large, split it further by sentences
+    3. Merge small paragraphs together up to max_chunk_size
+    4. Carry forward the last sentence as overlap between chunks
+    """
+
+    chunks = []
+
+    # Split text into paragraphs using double newlines as boundary
+    paragraphs = re.split(r'\n\n+', text)
+    paragraphs = [p.strip() for p in paragraphs if p.strip()]
+
+    current_chunk = ""
+    last_sentence = ""  # Used for overlap between chunks
+
+    for para in paragraphs:
+
+        # Case 1: Paragraph is too large — split it by sentences
+        if len(para) > max_chunk_size:
+
+            # Save the current chunk before processing large paragraph
+            if current_chunk.strip() and len(current_chunk) >= min_chunk_size:
+                chunks.append(current_chunk.strip())
+                # Carry last sentence forward as overlap
+                sentences = current_chunk.split('. ')
+                last_sentence = sentences[-1] if sentences else ""
+
+            # Split large paragraph into individual sentences
+            sentences = re.split(r'(?<=[.!?])\s+', para)
+            sentences = [s.strip() for s in sentences if s.strip()]
+
+            # Start new chunk with overlap from previous chunk
+            temp_chunk = last_sentence + " " if last_sentence else ""
+
+            for sentence in sentences:
+                # If adding this sentence exceeds max size — save current chunk
+                if len(temp_chunk) + len(sentence) > max_chunk_size:
+                    if temp_chunk.strip() and len(temp_chunk) >= min_chunk_size:
+                        chunks.append(temp_chunk.strip())
+                        # Carry this sentence as overlap into next chunk
+                        last_sentence = sentence
+                        temp_chunk = sentence + " "
+                    else:
+                        # Chunk too small — keep adding sentences
+                        temp_chunk += sentence + " "
+                else:
+                    temp_chunk += sentence + " "
+
+            # Whatever is left goes into current_chunk
+            current_chunk = temp_chunk
+
+        # Case 2: Paragraph fits — merge it into current chunk
+        elif len(current_chunk) + len(para) <= max_chunk_size:
+            current_chunk += "\n\n" + para if current_chunk else para
+
+        # Case 3: Current chunk is full — save it and start new one
+        else:
+            if current_chunk.strip() and len(current_chunk) >= min_chunk_size:
+                chunks.append(current_chunk.strip())
+                # Carry last sentence as overlap
+                sentences = current_chunk.split('. ')
+                last_sentence = sentences[-1] if len(sentences) > 1 else ""
+
+            # Start new chunk with overlap + current paragraph
+            current_chunk = last_sentence + " " + para if last_sentence else para
+
+    # Save the final remaining chunk
+    if current_chunk.strip():
+        chunks.append(current_chunk.strip())
+
+    return chunks
+
+
+# STEP 3 — CONVERT TEXT TO EMBEDDING USING OLLAMA
 def get_embedding(text: str):
+    """
+    Sends text to Ollama's nomic-embed-text model and returns
+    a 768-dimensional vector (embedding) representing the text.
+    """
     response = requests.post(
         f"{OLLAMA_URL}/api/embeddings",
         json={"model": "nomic-embed-text", "prompt": text}
@@ -26,41 +144,39 @@ def get_embedding(text: str):
     return response.json()["embedding"]
 
 
-# Extract all text from PDF file
-def extract_text_from_pdf(pdf_path: str):
-    reader = pypdf.PdfReader(pdf_path)
-    text = ""
-    for page in reader.pages:
-        extracted = page.extract_text()
-        if extracted:
-            text += extracted + "\n"
-    return text
+# STEP 4 — PROCESS PDF (MAIN PIPELINE FUNCTION)
 
-
-# Break large text into smaller chunks with overlap
-def create_chunks(text: str, chunk_size: int = 500, overlap: int = 50):
-    chunks = []
-    start = 0
-    while start < len(text):
-        end = start + chunk_size
-        chunks.append(text[start:end])
-        start += chunk_size - overlap
-    return chunks
-
-
-# Main function — process PDF and save embeddings in Qdrant
 def process_pdf(pdf_path: str, session_id: str):
+    """
+    Complete RAG ingestion pipeline:
+    PDF → Extract Text → Semantic Chunks → Embeddings → Qdrant
+
+    Args:
+        pdf_path   : Path to the uploaded PDF file
+        session_id : Unique session ID to store chunks under
+    Returns:
+        Number of chunks created and stored
+    """
     collection_name = f"session_{session_id}"
 
     # Step 1 — Extract text from PDF
+    print(f"\n[PROCESSING] PDF: {pdf_path}")
     text = extract_text_from_pdf(pdf_path)
+
     if not text.strip():
-        raise ValueError("No text found in PDF!")
+        raise ValueError("No text found in the PDF!")
 
-    # Step 2 — Break text into chunks
-    chunks = create_chunks(text)
+    print(f"[TEXT LENGTH] {len(text)} characters extracted")
 
-    # Step 3 — Create a new collection in Qdrant for this session
+    # Step 2 — Create semantic chunks
+    chunks = semantic_chunking(text)
+    print(f"[CHUNKS] {len(chunks)} semantic chunks created")
+
+    # Log chunk size distribution for debugging
+    sizes = [len(c) for c in chunks]
+    print(f"[CHUNK SIZES] Min: {min(sizes)}, Max: {max(sizes)}, Avg: {sum(sizes)//len(sizes)}")
+
+    # Step 3 — Create a fresh Qdrant collection for this session
     client.recreate_collection(
         collection_name=collection_name,
         vectors_config=VectorParams(size=768, distance=Distance.COSINE)
@@ -74,21 +190,37 @@ def process_pdf(pdf_path: str, session_id: str):
             PointStruct(
                 id=str(uuid.uuid4()),
                 vector=embedding,
-                payload={"text": chunk, "chunk_index": i}
+                payload={
+                    "text": chunk,
+                    "chunk_index": i,
+                    "source": pdf_path,       # Track which PDF this chunk came from
+                    "chunk_size": len(chunk)  # Track chunk size for debugging
+                }
             )
         )
 
-    # Step 5 — Save all points to Qdrant
-    client.upsert(
-        collection_name=collection_name,
-        points=points
-    )
+    # Step 5 — Store all points in Qdrant
+    client.upsert(collection_name=collection_name, points=points)
+    print(f"[SAVED] {len(chunks)} chunks saved to Qdrant")
 
     return len(chunks)
 
 
-# Search for relevant chunks based on user question
+
+# STEP 5 — SEARCH RELEVANT CHUNKS WITH DEBUG LOGGING
+
 def search_similar_chunks(question: str, session_id: str, top_k: int = 3):
+    """
+    Finds the most semantically similar chunks for a given question.
+    Logs query, retrieved chunks, and similarity scores for debugging.
+
+    Args:
+        question   : User's question
+        session_id : Session to search within
+        top_k      : Number of top chunks to retrieve (default: 3)
+    Returns:
+        List of relevant text chunks
+    """
     collection_name = f"session_{session_id}"
 
     # Convert question to embedding
@@ -98,8 +230,29 @@ def search_similar_chunks(question: str, session_id: str, top_k: int = 3):
     results = client.query_points(
         collection_name=collection_name,
         query=question_embedding,
-        limit=top_k
+        limit=top_k,
+        with_payload=True
     )
 
-    # Return only the text content of matching chunks
-    return [result.payload["text"] for result in results.points]
+    # ── DEBUG LOGGING (Assignment Requirement) ──
+    print(f"\n{'='*50}")
+    print(f"[QUERY]  : {question}")
+    print(f"[TOP {top_k} CHUNKS RETRIEVED]:")
+
+    chunks_with_scores = []
+    for i, result in enumerate(results.points):
+        print(f"\n  Chunk {i+1}:")
+        print(f"  Source : {result.payload.get('source', 'Unknown')}")
+        print(f"  Score  : {result.score:.4f}")
+        print(f"  Text   : {result.payload['text'][:150]}...")
+
+        chunks_with_scores.append({
+            "text": result.payload["text"],
+            "score": result.score,
+            "source": result.payload.get("source", "Unknown")
+        })
+
+    print(f"{'='*50}\n")
+
+    # Return only text content for chat.py
+    return [c["text"] for c in chunks_with_scores]

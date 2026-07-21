@@ -24,7 +24,7 @@ def upload_pdf(
     file: UploadFile = File(...),
     current_user: str = Depends(get_current_user)
 ):
-    # Check karo session is user ka hai
+    # Check, which users session is this 
     session = sessions_collection.find_one({
         "_id": ObjectId(session_id),
         "user_id": current_user
@@ -32,12 +32,12 @@ def upload_pdf(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found!")
 
-    # PDF ko disk pe save karo
+    # PDF pdf on disk
     file_path = os.path.join(UPLOAD_DIR, f"{session_id}_{file.filename}")
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # PDF process karo — chunks bana ke Qdrant mein save karo
+    # PDF process — make chunks an save in Qdrant
     chunks_count = process_pdf(file_path, session_id)
 
     return {
@@ -52,7 +52,7 @@ def ask_question(
     request: ChatRequestSchema,
     current_user: str = Depends(get_current_user)
 ):
-    # Check karo session is user ka hai
+    # Check, which users session is this ?
     session = sessions_collection.find_one({
         "_id": ObjectId(request.session_id),
         "user_id": current_user
@@ -60,13 +60,13 @@ def ask_question(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found!")
 
-    # Step 1 — Qdrant se relevant chunks dhundho
+    # Step 1 — find relevent chunks from ollama
     relevant_chunks = search_similar_chunks(request.question, request.session_id)
 
     # Step 2 — Chunks ko context mein jodo
     context = "\n\n".join(relevant_chunks)
 
-    # Step 3 — Ollama ko prompt bhejo
+    # Step 3 —  send promt to ollama
     prompt = f"""Use the following context to answer the question.
     
 Context:
@@ -86,7 +86,7 @@ Answer:"""
     )
     answer = response.json()["response"]
 
-    # Step 4 — MongoDB mein save karo
+    # Step 4 — MongoDB, Save in mongodb
     chats_collection.insert_one({
         "session_id": request.session_id,
         "user_id": current_user,

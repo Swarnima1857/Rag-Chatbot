@@ -10,8 +10,9 @@ chroma_db/
 # Uploads
 Backend/uploads/
 
-# Environment variables
-.env
 
 # Mac
 .DS_Store
+
+# Environment variables
+.env

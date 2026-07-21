@@ -4,9 +4,13 @@ from schemas.auth_schema import SignupSchema, LoginSchema, TokenSchema
 from passlib.context import CryptContext
 from jose import jwt
 from datetime import datetime, timedelta
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ===== CONFIGURATION =====
-SECRET_KEY = "Sw@rnima#RAG$2024!SecureKey"
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
