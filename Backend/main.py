@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers import auth, session, chat
+from services.embedding_service import load_company_documents
 
 # make FastAPI 
 app = FastAPI(title="RAG Chatbot API")
@@ -13,6 +14,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# load company documents automatically when server start
+@app.on_event("startup")
+async def startup_event():
+    print("\n[STARTUP] Loading company documents...")
+    total = load_company_documents("company_docs")
+    print(f"[STARTUP] {total} chunks ready!")
 
 # connect Auth router 
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])

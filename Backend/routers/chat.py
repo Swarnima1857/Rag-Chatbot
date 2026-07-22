@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from routers.session import get_current_user
-from services.embedding_service import process_pdf, search_similar_chunks
+from services.embedding_service import ( search_similar_chunks, search_company_docs)
 from schemas.chat_schema import ChatRequestSchema
 from database.db import chats_collection, sessions_collection
 from bson import ObjectId
@@ -8,45 +8,17 @@ from datetime import datetime
 import requests
 import os
 import shutil
+from dotenv import load_dotenv
+
+load_dotenv()
 
 router = APIRouter()
 
-UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-OLLAMA_URL = "http://localhost:11434"
+router = APIRouter()
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
 
-# ===== PDF UPLOAD ROUTE =====
-@router.post("/upload/{session_id}")
-def upload_pdf(
-    session_id: str,
-    file: UploadFile = File(...),
-    current_user: str = Depends(get_current_user)
-):
-    # Check, which users session is this 
-    session = sessions_collection.find_one({
-        "_id": ObjectId(session_id),
-        "user_id": current_user
-    })
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found!")
-
-    # PDF pdf on disk
-    file_path = os.path.join(UPLOAD_DIR, f"{session_id}_{file.filename}")
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    # PDF process — make chunks an save in Qdrant
-    chunks_count = process_pdf(file_path, session_id)
-
-    return {
-        "message": "PDF processed successfully!",
-        "chunks_created": chunks_count
-    }
-
-
-# ===== CHAT ROUTE =====
+# CHAT ROUTE - ASK QUESTION - from Company Docs
 @router.post("/ask")
 def ask_question(
     request: ChatRequestSchema,
@@ -58,24 +30,41 @@ def ask_question(
         "user_id": current_user
     })
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found!")
+        raise HTTPException(
+            status_code=404, 
+            detail="Session not found!"
+            )
 
-    # Step 1 — find relevent chunks from ollama
-    relevant_chunks = search_similar_chunks(request.question, request.session_id)
+        # find relevant chunks from Company docs
+    chunks_with_scores = search_company_docs(request.question)
+
+    if not chunks_with_scores:
+        return {
+            "answer": "Sorry, I couldn't find relevant information in our company documents.",
+            "sources": []
+        }  
+
+     # make Context — show source too
+    context_parts = []
+    for chunk in chunks_with_scores:
+        context_parts.append(
+            f"[Source: {chunk['source']}]\n{chunk['text']}"
+        )
 
     # Step 2 — Chunks ko context mein jodo
-    context = "\n\n".join(relevant_chunks)
+    context = "\n\n".join(context_parts)
 
     # Step 3 —  send promt to ollama
-    prompt = f"""Use the following context to answer the question.
+    prompt = f"""You are a helpful company assistant.
+Answer the question based ONLY on the provided company documents.If the answer is not in the documents, say "I don't have information about this
     
-Context:
+Company Documents Context:
 {context}
 
 Question: {request.question}
 
 Answer:"""
-
+    # get response from Ollama
     response = requests.post(
         f"{OLLAMA_URL}/api/generate",
         json={
@@ -113,6 +102,7 @@ def get_chat_history(
         result.append({
             "question": chat["question"],
             "answer": chat["answer"],
+            "sources": chat.get("sources", []),
             "created_at": str(chat["created_at"])
         })
     return result

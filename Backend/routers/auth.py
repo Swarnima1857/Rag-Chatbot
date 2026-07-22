@@ -63,15 +63,15 @@ def signup(user: SignupSchema):
 # Login API
 @router.post("/login", response_model=TokenSchema)
 def login(user: LoginSchema):
-    # Database mein user dhundo
+    # find user in database
     db_user = users_collection.find_one({"email": user.email})
     if not db_user:
         raise HTTPException(status_code=400, detail="Email not found!")
 
-    # Password check karo
+    # check password
     if not verify_password(user.password, db_user["password"]):
         raise HTTPException(status_code=400, detail="Wrong password!")
 
-    # Token banao aur bhejo
+    # make token and send
     token = create_token({"sub": str(db_user["_id"]), "email": db_user["email"]})
     return {"access_token": token, "token_type": "bearer"}

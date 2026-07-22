@@ -5,9 +5,13 @@ from schemas.session_schema import CreateSessionSchema
 from jose import jwt, JWTError
 from datetime import datetime
 from bson import ObjectId
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ===== CONFIGURATION =====
-SECRET_KEY = "Sw@rnima#RAG$2024!SecureKey"  # auth.py wali same key
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 
 router = APIRouter()
@@ -16,7 +20,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 # ===== HELPER FUNCTION =====
 
-# Token se current user nikalna
+# find current user from token
 def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -30,7 +34,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
 
 # ===== ROUTES =====
 
-# Naya session banao
+# make new session
 @router.post("/create")
 def create_session(
     session: CreateSessionSchema,
@@ -49,7 +53,7 @@ def create_session(
     }
 
 
-# User ke saare sessions dekho
+# see users all sessions
 @router.get("/all")
 def get_all_sessions(current_user: str = Depends(get_current_user)):
     sessions = sessions_collection.find({"user_id": current_user})
@@ -74,7 +78,10 @@ def delete_session(
         "user_id": current_user
     })
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found!")
+        raise HTTPException(
+            status_code=404, 
+            detail="Session not found!"
+            )
 
     sessions_collection.delete_one({"_id": ObjectId(session_id)})
     return {"message": "Session deleted!"}
