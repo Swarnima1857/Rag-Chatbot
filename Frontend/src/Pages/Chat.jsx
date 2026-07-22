@@ -14,11 +14,8 @@ export default function Chat() {
   const [messages, setMessages] = useState([]);
   // Input box mein jo type ho raha hai
   const [question, setQuestion] = useState("");
-  // PDF upload hua ya nahi (kitne chunks bane)
-  const [pdfInfo, setPdfInfo] = useState(null);
   // Loading states
   const [isAsking, setIsAsking] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
 
   // Scroll ke liye reference (naya message aane pe neeche scroll ho)
   const messagesEndRef = useRef(null);
@@ -80,7 +77,6 @@ export default function Chat() {
   const selectSession = async (sessionId) => {
     setActiveSession(sessionId);
     setMessages([]);
-    setPdfInfo(null);
     // Us session ki purani history load karo
     try {
       const response = await axios.get(
@@ -90,35 +86,6 @@ export default function Chat() {
       setMessages(response.data);
     } catch (error) {
       console.log("No history found");
-    }
-  };
-
-  // ===== FUNCTION: PDF Upload karo =====
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file || !activeSession) return;
-
-    // FormData banana padta hai file bhejne ke liye
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-      setIsUploading(true);
-      const response = await axios.post(
-        `http://127.0.0.1:8000/chat/upload/${activeSession}`,
-        formData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "multipart/form-data"
-          }
-        }
-      );
-      setPdfInfo({ name: file.name, chunks: response.data.chunks_created });
-    } catch (error) {
-      alert("PDF upload failed!");
-    } finally {
-      setIsUploading(false);
     }
   };
 
@@ -241,7 +208,7 @@ export default function Chat() {
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
 
         {!activeSession ? (
-          // Agar koi session select nahi hai
+          // if any session is not selected 
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af" }}>
             <p>👈 Select or create a chat session to start</p>
           </div>
@@ -253,16 +220,8 @@ export default function Chat() {
               display: "flex", alignItems: "center", justifyContent: "space-between"
             }}>
               <span style={{ fontWeight: "600", fontSize: "14px" }}>
-                {pdfInfo ? `📄 ${pdfInfo.name}` : "No PDF uploaded yet"}
               </span>
-              {pdfInfo && (
-                <span style={{
-                  fontSize: "12px", color: "#085041", background: "#e1f5ee",
-                  padding: "4px 10px", borderRadius: "12px"
-                }}>
-                  ✅ {pdfInfo.chunks} chunks ready
-                </span>
-              )}
+              
             </div>
 
             {/* Messages Area */}
@@ -304,29 +263,15 @@ export default function Chat() {
               padding: "14px 20px", borderTop: "1px solid #e5e7eb",
               display: "flex", gap: "10px", alignItems: "center", background: "white"
             }}>
-              {/* PDF Upload Button */}
-              <label style={{
-                width: "36px", height: "36px", borderRadius: "10px",
-                background: "#f3f4f6", display: "flex", alignItems: "center",
-                justifyContent: "center", cursor: "pointer", flexShrink: 0
-              }}>
-                📎
-                <input
-                  type="file"
-                  accept=".pdf"
-                  onChange={handleFileUpload}
-                  style={{ display: "none" }}
-                />
-              </label>
 
               {/* Text Input */}
               <input
                 type="text"
-                placeholder={isUploading ? "Uploading PDF..." : "Ask something about your PDF..."}
+                placeholder="Ask about company policies..."
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleAskQuestion()}
-                disabled={isUploading}
+                disabled={false}
                 style={{
                   flex: 1, borderRadius: "20px", border: "1px solid #e5e7eb",
                   padding: "10px 16px", fontSize: "14px", outline: "none"

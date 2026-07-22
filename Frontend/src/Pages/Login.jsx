@@ -56,7 +56,7 @@ export default function Login() {
         </p>
         <div style={{ marginTop: "40px", display: "flex", flexDirection: "column", gap: "16px" }}>
           {[
-            { icon: "📄", text: "Upload PDF documents" },
+            { icon: "📄", text: "Company Docs" },
             { icon: "🔍", text: "Smart semantic search" },
             { icon: "💬", text: "AI powered answers" },
             { icon: "📚", text: "Save chat history" },
