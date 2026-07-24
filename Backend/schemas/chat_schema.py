@@ -1,15 +1,15 @@
+from typing import Optional
 from pydantic import BaseModel
 
-# Upload response ke liye
-class UploadResponseSchema(BaseModel):
-    message: str
-    chunks_created: int
 
-# Chat question ke liye
+# For Chat Question
 class ChatRequestSchema(BaseModel):
     session_id: str
     question: str
+    model: Optional[str] = "ollama"  # "ollama" or "openai" — default ollama
 
-# Chat response ke liye
+# For Chat Response
 class ChatResponseSchema(BaseModel):
     answer: str
+    sources: list = []
+    model_used: str = ""
