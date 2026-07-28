@@ -1,6 +1,4 @@
-#!/bin/sh
-'''exec' "/Users/swarnima/Documents/ChatBot Project/Backend/venv/bin/python3" "$0" "$@"
-' '''
+#!/Users/swarnima/Desktop/Rag-Chatbot/Backend/venv/bin/python3
 # -*- coding: utf-8 -*-
 import re
 import sys

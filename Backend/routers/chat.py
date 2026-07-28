@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from routers.session import get_current_user
-from services.embedding_service import ( search_similar_chunks, search_company_docs)
+from services.embedding_service import (search_company_docs)
 from schemas.chat_schema import ChatRequestSchema
 from database.db import chats_collection, sessions_collection
 from bson import ObjectId
