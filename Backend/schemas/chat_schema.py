@@ -12,4 +12,4 @@ class ChatRequestSchema(BaseModel):
 
 # Chat response ke liye
 class ChatResponseSchema(BaseModel):
-    answer: str
+    answer: str 
