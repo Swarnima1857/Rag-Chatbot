@@ -13,10 +13,60 @@ from dotenv import load_dotenv
 load_dotenv()
 
 router = APIRouter()
-
-router = APIRouter()
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
+# ===== HELPER: Generate answer using Ollama (Local, Free) =====
+def generate_with_ollama(prompt: str) -> str:
+    """
+    Sends prompt to local Ollama server (llama3.2 model)
+    Runs completely offline — no API key needed
+    """
+    response = requests.post(
+        f"{OLLAMA_URL}/api/generate",
+        json={
+            "model": "llama3.2",
+            "prompt": prompt,
+            "stream": False
+        }
+    )
+    return response.json()["response"]
+
+
+# ===== HELPER: Generate answer using OpenAI (Cloud, Paid) =====
+def generate_with_gemini(prompt: str) -> str:
+    """
+    Sends prompt to OpenAI API (gpt-3.5-turbo model)
+    Requires OPENAI_API_KEY in .env file
+    """
+    if not OPENAI_API_KEY:
+        raise HTTPException(
+            status_code=400,
+            detail="OpenAI API key not configured! Add OPENAI_API_KEY in .env file"
+        )
+
+    response = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json"
+        },
+        json={
+            "model": "gpt-3.5-turbo",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a helpful company assistant. Answer questions based only on provided company documents."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            "temperature": 0.3
+        }
+    )
+    return response.json()["choices"][0]["message"]["content"]
 
 # CHAT ROUTE - ASK QUESTION - from Company Docs
 @router.post("/ask")
@@ -64,16 +114,18 @@ Company Documents Context:
 Question: {request.question}
 
 Answer:"""
-    # get response from Ollama
-    response = requests.post(
-        f"{OLLAMA_URL}/api/generate",
-        json={
-            "model": "llama3.2",
-            "prompt": prompt,
-            "stream": False
-        }
-    )
-    answer = response.json()["response"]
+    # Step 5 — Select Moddel and generate Answer (TOGGLE!)
+    print(f"\n[MODEL SELECTED]: {request.model}")
+
+    if request.model == "openai":
+        answer = generate_with_openai(prompt)
+        model_used = "openai/gpt-3.5-turbo"
+    else:
+        # Default — Ollama use karo
+        answer = generate_with_ollama(prompt)
+        model_used = "ollama/llama3.2"
+
+    print(f"[ANSWER GENERATED] by {model_used}")
 
     # Step 4 — MongoDB, Save in mongodb
     chats_collection.insert_one({
@@ -81,10 +133,16 @@ Answer:"""
         "user_id": current_user,
         "question": request.question,
         "answer": answer,
+        "model_used": model_used,
+        "sources": [c["source"] for c in chunks_with_scores],
+        "scores": [round(c["score"], 4) for c in chunks_with_scores],
         "created_at": datetime.utcnow()
     })
 
-    return {"answer": answer}
+    return {"answer": answer,
+        "sources": [c["source"] for c in chunks_with_scores],
+        "model_used": model_used
+        }
 
 
 # ===== CHAT HISTORY ROUTE =====
