@@ -135,7 +135,7 @@ Answer:"""
         "answer": answer,
         "model_used": model_used,
         "sources": [c["source"] for c in chunks_with_scores],
-        "scores": [round(c["score"], 4) for c in chunks_with_scores],
+        "scores": [round(c["combined_score"], 4) for c in chunks_with_scores],
         "created_at": datetime.utcnow()
     })
 
