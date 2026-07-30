@@ -16,6 +16,8 @@ export default function Chat() {
   const [question, setQuestion] = useState("");
   // Loading states
   const [isAsking, setIsAsking] = useState(false);
+  // AI Model Selection
+  const [selectedModel, setSelectedModel] = useState("ollama");
 
   // Scroll ke liye reference (naya message aane pe neeche scroll ho)
   const messagesEndRef = useRef(null);
@@ -37,7 +39,7 @@ export default function Chat() {
     }
     fetchSessions();
   }, []);
-
+  
   // ===== NAYA MESSAGE AANE PE NEECHE SCROLL KARO =====
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -69,7 +71,7 @@ export default function Chat() {
       // Use turant select kar do
       selectSession(response.data.session_id);
     } catch (error) {
-      alert("Failed to create session");
+      console.log("Error creating session:", error);
     }
   };
 
@@ -101,10 +103,14 @@ export default function Chat() {
     try {
       setIsAsking(true);
       const response = await axios.post(
-        "http://127.0.0.1:8000/chat/ask",
-        { session_id: activeSession, question },
-        authHeaders
-      );
+  "http://127.0.0.1:8000/chat/ask",
+  {
+    session_id: activeSession,
+    question,
+    model: selectedModel
+  },
+  authHeaders
+);
       // Jawab aane pe last message update karo
       setMessages((prev) => {
         const updated = [...prev];
@@ -215,14 +221,68 @@ export default function Chat() {
         ) : (
           <>
             {/* Header — PDF info */}
-            <div style={{
-              padding: "14px 20px", borderBottom: "1px solid #e5e7eb",
-              display: "flex", alignItems: "center", justifyContent: "space-between"
-            }}>
-              <span style={{ fontWeight: "600", fontSize: "14px" }}>
-              </span>
-              
-            </div>
+            <div
+  style={{
+    padding: "14px 20px",
+    borderBottom: "1px solid #e5e7eb",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center"
+  }}
+>
+<span
+style={{
+fontSize:"13px",
+fontWeight:"600",
+color:"#374151"
+}}
+>
+AI Model
+</span>
+
+<button
+onClick={() => setSelectedModel("ollama")}
+style={{
+padding:"8px 16px",
+borderRadius:"20px",
+border:"none",
+cursor:"pointer",
+background:
+selectedModel==="ollama"
+? "#0d9488"
+: "#e5e7eb",
+color:
+selectedModel==="ollama"
+? "white"
+: "#374151",
+fontWeight:"600"
+}}
+>
+Ollama
+</button>
+
+<button
+onClick={() => setSelectedModel("openai")}
+style={{
+padding:"8px 16px",
+borderRadius:"20px",
+border:"none",
+cursor:"pointer",
+background:
+selectedModel==="openai"
+? "#2563eb"
+: "#e5e7eb",
+color:
+selectedModel==="openai"
+? "white"
+: "#374151",
+fontWeight:"600"
+}}
+>
+OpenAI
+</button>
+
+</div>
 
             {/* Messages Area */}
             <div style={{ flex: 1, padding: "20px", overflowY: "auto", background: "#fafafa" }}>
