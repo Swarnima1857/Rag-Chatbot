@@ -290,4 +290,5 @@ def search_company_docs(question: str, top_k: int = 3):
     """
     Main search function — uses hybrid search.
     """
-    return hybrid_search(question, top_k=top_k)
+    results = hybrid_search(question, top_k=top_k)
+    return results

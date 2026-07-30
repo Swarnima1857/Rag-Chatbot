@@ -27,32 +27,32 @@ def generate_with_ollama(prompt: str) -> str:
         json={
             "model": "llama3.2",
             "prompt": prompt,
-            "stream": False
+            "stream": False,
         }
     )
     return response.json()["response"]
 
 
-# ===== HELPER: Generate answer using OpenAI (Cloud, Paid) =====
+# ===== HELPER: Generate answer using GEMINI (Cloud, Paid) =====
 def generate_with_gemini(prompt: str) -> str:
     """
-    Sends prompt to OpenAI API (gpt-3.5-turbo model)
-    Requires OPENAI_API_KEY in .env file
+    Sends prompt to GEMINI API (gemini-3.6-flash model)
+    Requires GEMINI_API_KEY in .env file
     """
-    if not OPENAI_API_KEY:
+    if not GEMINI_API_KEY:
         raise HTTPException(
             status_code=400,
-            detail="OpenAI API key not configured! Add OPENAI_API_KEY in .env file"
+            detail="GEMINI_API_KEY not set in .env file!"
         )
 
     response = requests.post(
-        "https://api.openai.com/v1/chat/completions",
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
         headers={
-            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Authorization": f"Bearer {GEMINI_API_KEY}",
             "Content-Type": "application/json"
         },
         json={
-            "model": "gpt-3.5-turbo",
+            "model": "gemini-3.6-flash",
             "messages": [
                 {
                     "role": "system",
@@ -66,7 +66,9 @@ def generate_with_gemini(prompt: str) -> str:
             "temperature": 0.3
         }
     )
-    return response.json()["choices"][0]["message"]["content"]
+    print(response.status_code)
+    print(response.text)
+    return response.text
 
 # CHAT ROUTE - ASK QUESTION - from Company Docs
 @router.post("/ask")
@@ -107,7 +109,7 @@ def ask_question(
     # Step 3 —  send promt to ollama
     prompt = f"""You are a helpful company assistant.
 Answer the question based ONLY on the provided company documents.If the answer is not in the documents, say "I don't have information about this
-    
+<history></history>
 Company Documents Context:
 {context}
 
@@ -117,9 +119,9 @@ Answer:"""
     # Step 5 — Select Moddel and generate Answer (TOGGLE!)
     print(f"\n[MODEL SELECTED]: {request.model}")
 
-    if request.model == "openai":
-        answer = generate_with_openai(prompt)
-        model_used = "openai/gpt-3.5-turbo"
+    if request.model == "gemini":
+        answer = generate_with_gemini(prompt)
+        model_used = "google/gemini-3.6-flash"
     else:
         # Default — Ollama use karo
         answer = generate_with_ollama(prompt)
