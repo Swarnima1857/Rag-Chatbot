@@ -23,6 +23,7 @@ client = QdrantClient(
 )
 
 
+
 # STEP 1 — EXTRACT TEXT FROM PDF
 
 def extract_text_from_pdf(pdf_path: str):
