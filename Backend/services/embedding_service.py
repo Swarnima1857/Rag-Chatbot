@@ -173,7 +173,7 @@ def load_company_documents(docs_folder: str = "company_docs"):
 
     print(f"\n[DONE] {total_chunks} total chunks saved from {len(pdf_files)} PDFs!")
     return total_chunks
-
+    
 
 # STEP 6 — HYBRID SEARCH
 def hybrid_search(question: str, top_k: int = 3):
