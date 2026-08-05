@@ -39,7 +39,7 @@ export default function Chat() {
     }
     fetchSessions();
   }, []);
-  
+
   // ===== NAYA MESSAGE AANE PE NEECHE SCROLL KARO =====
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -279,7 +279,7 @@ selectedModel==="openai"
 fontWeight:"600"
 }}
 >
-OpenAI
+Gemini
 </button>
 
 </div>
